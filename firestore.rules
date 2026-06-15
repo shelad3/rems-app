@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper functions ──────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isRole(role) {
+      return isAuthenticated() && getUserRole() == role;
+    }
+
+    function isOwnerOf(docData) {
+      return isAuthenticated() && (
+        docData.ownerId == request.auth.uid ||
+        docData.landlordId == request.auth.uid
+      );
+    }
+
+    function isAssignedCaretaker(docData) {
+      return isAuthenticated() && docData.caretakerId == request.auth.uid;
+    }
+
+    // ─── Users ─────────────────────────────────────────────
+    match /users/{uid} {
+      allow read: if isAuthenticated();
+      allow write: if request.auth.uid == uid || isRole('landlord');
+      allow delete: if isRole('landlord');
+    }
+
+    // ─── Properties ────────────────────────────────────────
+    match /properties/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isRole('landlord') || isRole('caretaker');
+      allow update: if isRole('landlord') || isRole('caretaker');
+      allow delete: if isRole('landlord');
+    }
+
+    // ─── Units ─────────────────────────────────────────────
+    match /units/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isRole('landlord') || isRole('caretaker');
+      allow update: if isRole('landlord') || isRole('caretaker');
+      allow delete: if isRole('landlord');
+    }
+
+    // ─── Applications ──────────────────────────────────────
+    match /applications/{id} {
+      allow read: if isAuthenticated();
+      allow create: if request.auth.uid == request.resource.data.tenantId;
+      allow update: if isRole('caretaker') || isRole('landlord');
+      allow delete: if isRole('landlord');
+    }
+
+    // ─── Maintenance ───────────────────────────────────────
+    match /maintenance/{id} {
+      allow read: if isAuthenticated();
+      allow create: if request.auth.uid == request.resource.data.tenantId;
+      allow update: if isRole('caretaker') || isRole('landlord') || request.auth.uid == resource.data.tenantId;
+      allow delete: if isRole('landlord');
+    }
+
+    // ─── Leases ────────────────────────────────────────────
+    match /leases/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isRole('landlord') || isRole('caretaker');
+      allow update: if isRole('landlord');
+      allow delete: if isRole('landlord');
+    }
+  }
+}

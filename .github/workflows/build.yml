@@ -1,0 +1,78 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate firebase_options.dart
+        run: |
+          echo "// Auto-generated placeholder — run 'flutterfire configure' for real config" > lib/firebase_options.dart
+          cat <<'EOF' >> lib/firebase_options.dart
+          import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+          class DefaultFirebaseOptions {
+            static FirebaseOptions get currentPlatform => const FirebaseOptions(
+              apiKey: String.fromEnvironment('FIREBASE_API_KEY'),
+              appId: String.fromEnvironment('FIREBASE_APP_ID'),
+              messagingSenderId: String.fromEnvironment('FIREBASE_SENDER_ID'),
+              projectId: String.fromEnvironment('FIREBASE_PROJECT_ID'),
+              storageBucket: String.fromEnvironment('FIREBASE_STORAGE_BUCKET'),
+            );
+          }
+          EOF
+
+      - name: Build APK (release)
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rems-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: rems-release-apk
+          path: .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app-release.apk
+          generate_release_notes: true

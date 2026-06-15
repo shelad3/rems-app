@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "857595619216",
+    "project_id": "rems-dae41",
+    "storage_bucket": "rems-dae41.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:857595619216:android:f14b5b39a8a8bcd89df515",
+        "android_client_info": {
+          "package_name": "com.nativecodex.real_estate_management_system"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAuXNq5pKQAquWlrBK5frJLEzlzUSlAxBE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
