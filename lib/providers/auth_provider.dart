@@ -267,7 +267,11 @@ class AuthProvider extends ChangeNotifier {
       }
 
       // Pull existing cloud data into local SQLite
-      await _firestore.downloadFromFirestore();
+      try {
+        await _firestore.downloadFromFirestore();
+      } catch (e) {
+        debugPrint('Download from Firestore error: $e');
+      }
 
       _registrationInProgress = false;
       _isProcessingAuth = false;
