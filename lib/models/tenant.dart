@@ -49,6 +49,20 @@ class Tenant {
     );
   }
 
+  Map<String, dynamic> toFirestoreMap() {
+    return {
+      'name': name,
+      'email': email,
+      'phone': phone,
+      'emergencyContact': emergencyContact,
+      'emergencyPhone': emergencyPhone,
+      'idNumber': idNumber,
+      'notes': notes,
+      'createdAt': createdAt.toIso8601String(),
+      'oldTenantId': id,
+    };
+  }
+
   Tenant copyWith({
     int? id,
     String? name,

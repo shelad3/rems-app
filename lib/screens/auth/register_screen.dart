@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../providers/auth_provider.dart';
 import '../../database/database_helper.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/firestore_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -17,12 +18,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _firestore = FirestoreService.instance;
   String _role = 'tenant';
   bool _obscurePassword = true;
 
-  int? _selectedOwnerId;
-  bool _linkingLoaded = false;
   List<Map<String, dynamic>> _owners = [];
+  List<Map<String, dynamic>> _properties = [];
+  List<Map<String, dynamic>> _units = [];
+  String? _selectedOwnerId;
+  String? _selectedPropertyId;
+  String? _selectedUnitId;
+  bool _linkingLoaded = false;
 
   @override
   void dispose() {
@@ -34,11 +40,107 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  Future<void> _loadOwners() async {
+  Future<void> _loadLinkingData() async {
     if (_linkingLoaded) return;
-    final db = DatabaseHelper.instance;
-    _owners = await db.queryAll('owners');
+    try {
+      final db = DatabaseHelper.instance;
+
+      final ownersSnap = await _firestore.db.collection('owners').get();
+      _owners = ownersSnap.docs.map((d) {
+            final map = <String, dynamic>{'id': d.id};
+            final data = d.data() as Map<String, dynamic>?;
+            if (data != null) map.addAll(data);
+            return map;
+          }).toList();
+
+      final propsSnap = await _firestore.propertiesRef.get();
+      _properties = propsSnap.docs.map((d) {
+            final map = <String, dynamic>{'id': d.id};
+            final data = d.data() as Map<String, dynamic>?;
+            if (data != null) map.addAll(data);
+            return map;
+          }).toList();
+
+      final unitsSnap = await _firestore.unitsRef.get();
+      _units = unitsSnap.docs.map((d) {
+            final map = <String, dynamic>{'id': d.id};
+            final data = d.data() as Map<String, dynamic>?;
+            if (data != null) map.addAll(data);
+            return map;
+          }).toList();
+
+      if (_owners.isEmpty) {
+        final localOwners = await db.queryAll('owners');
+        _owners = localOwners.map((m) {
+          return {
+            'id': m['id'].toString(),
+            'name': m['name'] as String? ?? '',
+            'oldOwnerId': m['id'],
+          };
+        }).toList();
+      }
+
+      if (_properties.isEmpty) {
+        final localProps = await db.queryAll('properties');
+        _properties = localProps.map((m) {
+          return {
+            'id': m['id'].toString(),
+            'name': m['name'] as String? ?? '',
+            'oldPropertyId': m['id'],
+          };
+        }).toList();
+      }
+
+      if (_units.isEmpty) {
+        final localUnits = await db.queryAll('units');
+        _units = localUnits.map((m) {
+          return {
+            'id': m['id'].toString(),
+            'unitNumber': m['unit_number'] as String? ?? '',
+            'propertyId': m['property_id'].toString(),
+            'rentAmount': (m['rent_amount'] as num?)?.toDouble() ?? 0,
+            'status': (m['is_occupied'] as int?) == 1 ? 'occupied' : 'vacant',
+            'oldUnitId': m['id'],
+          };
+        }).toList();
+      }
+    } catch (e) {
+      debugPrint('Load linking data error: $e');
+    }
     _linkingLoaded = true;
+  }
+
+  Future<void> _register(AuthProvider provider) async {
+    if (!_formKey.currentState!.validate()) return;
+
+    int? ownerId;
+    int? tenantId;
+
+    if (_selectedOwnerId != null) {
+      final match = _owners.firstWhere(
+          (o) => o['id'] == _selectedOwnerId,
+          orElse: () => <String, dynamic>{});
+      if (match.isNotEmpty) {
+        // Use the mapped SQLite ID if available (from oldOwnerId)
+        ownerId = match['oldOwnerId'] as int?;
+        if (ownerId == null) {
+          ownerId = int.tryParse(match['id'] as String);
+        }
+      }
+    }
+
+    final ok = await provider.register(
+      _emailController.text.trim(),
+      _passwordController.text,
+      _nameController.text.trim(),
+      _role,
+      phone: _phoneController.text.trim(),
+      ownerId: ownerId,
+      tenantId: tenantId,
+    );
+    if (ok && mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   @override
@@ -160,59 +262,151 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     setState(() {
                       _role = v!;
                       _selectedOwnerId = null;
+                      _selectedPropertyId = null;
+                      _selectedUnitId = null;
                     });
                   },
                 ),
-                if (_role == 'owner' || _role == 'tenant') ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline,
-                            size: 20, color: colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _role == 'owner'
-                                ? 'An owner profile will be created automatically for you in our cloud database.'
-                                : 'A tenant profile will be created automatically for you in our cloud database.',
-                            style: TextStyle(
-                                fontSize: 13, color: colorScheme.primary),
+                const SizedBox(height: 16),
+                FutureBuilder(
+                  future: _loadLinkingData(),
+                  builder: (context, _) {
+                    if (_role == 'landlord' || _role == 'caretaker') {
+                      return Column(
+                        children: [
+                          DropdownButtonFormField<String>(
+                            value: _selectedOwnerId,
+                            decoration: InputDecoration(
+                              labelText: _role == 'caretaker'
+                                  ? 'Manage for which Owner?'
+                                  : 'Work with which Owner?',
+                              border: const OutlineInputBorder(),
+                              prefixIcon: const Icon(Icons.person_outline),
+                            ),
+                            isExpanded: true,
+                            hint: const Text('Select an owner (optional)'),
+                            items: [
+                              const DropdownMenuItem(
+                                  value: null, child: Text('None (skip)')),
+                              ..._owners.map((o) => DropdownMenuItem(
+                                  value: o['id'] as String,
+                                  child: Text(o['name'] as String? ?? ''))),
+                            ],
+                            onChanged: (v) => setState(() {
+                              _selectedOwnerId = v;
+                              _selectedPropertyId = null;
+                            }),
                           ),
+                          if (_role == 'caretaker') ...[
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              value: _selectedPropertyId,
+                              decoration: const InputDecoration(
+                                labelText: 'Manage which Property?',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.business),
+                              ),
+                              isExpanded: true,
+                              hint: const Text('Select property (optional)'),
+                              items: [
+                                const DropdownMenuItem(
+                                    value: null, child: Text('None (skip)')),
+                                ..._properties.map((p) => DropdownMenuItem(
+                                    value: p['id'] as String,
+                                    child: Text(p['name'] as String? ?? ''))),
+                              ],
+                              onChanged: (v) =>
+                                  setState(() => _selectedPropertyId = v),
+                            ),
+                          ],
+                        ],
+                      );
+                    }
+
+                    if (_role == 'tenant') {
+                      return Column(
+                        children: [
+                          DropdownButtonFormField<String>(
+                            value: _selectedPropertyId,
+                            decoration: const InputDecoration(
+                              labelText: 'Interested in which Property?',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.business),
+                            ),
+                            isExpanded: true,
+                            hint: const Text('Select property (optional)'),
+                            items: [
+                              const DropdownMenuItem(
+                                  value: null, child: Text('Browse later')),
+                              ..._properties.map((p) => DropdownMenuItem(
+                                  value: p['id'] as String,
+                                  child: Text(p['name'] as String? ?? ''))),
+                            ],
+                            onChanged: (v) {
+                              setState(() {
+                                _selectedPropertyId = v;
+                                _selectedUnitId = null;
+                              });
+                            },
+                          ),
+                          if (_selectedPropertyId != null) ...[
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              value: _selectedUnitId,
+                              decoration: const InputDecoration(
+                                labelText: 'Preferred Unit?',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.door_front_door),
+                              ),
+                              isExpanded: true,
+                              hint: const Text('Select unit (optional)'),
+                              items: [
+                                const DropdownMenuItem(
+                                    value: null, child: Text('Browse later')),
+                                ..._units
+                                    .where((u) =>
+                                        u['propertyId'] == _selectedPropertyId &&
+                                        u['status'] == 'vacant')
+                                    .map((u) => DropdownMenuItem(
+                                        value: u['id'] as String,
+                                        child: Text(
+                                            'Unit ${u['unitNumber']} - \$${(u['rentAmount'] as num?)?.toDouble() ?? 0}/mo'))),
+                              ],
+                              onChanged: (v) =>
+                                  setState(() => _selectedUnitId = v),
+                            ),
+                          ],
+                        ],
+                      );
+                    }
+
+                    if (_role == 'owner') {
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-                if (_role == 'landlord' || _role == 'caretaker') ...[
-                  const SizedBox(height: 16),
-                  FutureBuilder(
-                    future: _loadOwners(),
-                    builder: (context, _) => DropdownButtonFormField<int>(
-                      value: _selectedOwnerId,
-                      decoration: const InputDecoration(
-                        labelText: 'Work for which Owner?',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person_outline),
-                      ),
-                      hint: const Text('Select an owner (optional)'),
-                      items: [
-                        const DropdownMenuItem(
-                            value: null, child: Text('None (skip)')),
-                        ..._owners.map((o) => DropdownMenuItem(
-                            value: o['id'] as int,
-                            child: Text(o['name'] as String))),
-                      ],
-                      onChanged: (v) =>
-                          setState(() => _selectedOwnerId = v),
-                    ),
-                  ),
-                ],
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline,
+                                size: 20, color: colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'An owner profile will be created for you.',
+                                style: TextStyle(
+                                    fontSize: 13, color: colorScheme.primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return const SizedBox.shrink();
+                  },
+                ),
                 if (authProvider.error != null) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -255,20 +449,5 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _register(AuthProvider provider) async {
-    if (!_formKey.currentState!.validate()) return;
-    final ok = await provider.register(
-      _emailController.text.trim(),
-      _passwordController.text,
-      _nameController.text.trim(),
-      _role,
-      phone: _phoneController.text.trim(),
-      ownerId: _selectedOwnerId,
-    );
-    if (ok && mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    }
   }
 }

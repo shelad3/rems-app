@@ -1,14 +1,20 @@
 import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../database/database_helper.dart';
 import '../models/tenant.dart';
+import '../services/firestore_service.dart';
 
 class TenantProvider extends ChangeNotifier {
   final DatabaseHelper _db = DatabaseHelper.instance;
+  final FirestoreService _firestore = FirestoreService.instance;
   List<Tenant> _tenants = [];
   bool _isLoading = false;
 
   List<Tenant> get tenants => _tenants;
   bool get isLoading => _isLoading;
+
+  Stream<QuerySnapshot> get tenantsStream =>
+      FirebaseFirestore.instance.collection('tenants').snapshots();
 
   Future<void> loadTenants() async {
     _isLoading = true;
@@ -21,17 +27,48 @@ class TenantProvider extends ChangeNotifier {
 
   Future<int> addTenant(Tenant tenant) async {
     final id = await _db.insert('tenants', tenant.toMap());
+    try {
+      await _firestore.db.collection('tenants').add({
+        ...tenant.toFirestoreMap(),
+        'oldTenantId': id,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('Firestore addTenant error: $e');
+    }
     await loadTenants();
     return id;
   }
 
   Future<void> updateTenant(Tenant tenant) async {
     await _db.update('tenants', tenant.toMap(), tenant.id!);
+    try {
+      final docs = await _firestore.db
+          .collection('tenants')
+          .where('oldTenantId', isEqualTo: tenant.id)
+          .get();
+      for (final d in docs.docs) {
+        await d.reference.update(tenant.toFirestoreMap());
+      }
+    } catch (e) {
+      debugPrint('Firestore updateTenant error: $e');
+    }
     await loadTenants();
   }
 
   Future<void> deleteTenant(int id) async {
     await _db.delete('tenants', id);
+    try {
+      final docs = await _firestore.db
+          .collection('tenants')
+          .where('oldTenantId', isEqualTo: id)
+          .get();
+      for (final d in docs.docs) {
+        await d.reference.delete();
+      }
+    } catch (e) {
+      debugPrint('Firestore deleteTenant error: $e');
+    }
     await loadTenants();
   }
 

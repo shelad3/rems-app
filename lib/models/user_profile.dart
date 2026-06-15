@@ -53,11 +53,15 @@ class UserProfile {
 
   Map<String, dynamic> toFirestoreMap() {
     return {
+      'uid': uid,
       'name': name,
       'phone': phone,
       'role': role,
       'isActive': isActive,
       'email': email,
+      'ownerId': ownerId,
+      'tenantId': tenantId,
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 
@@ -86,7 +90,11 @@ class UserProfile {
       role: (map['role'] as String?) ?? 'tenant',
       phone: (map['phone'] as String?) ?? '',
       isActive: (map['isActive'] as bool?) ?? true,
-      createdAt: DateTime.now(),
+      ownerId: (map['ownerId'] as int?) ?? (map['owner_id'] as int?),
+      tenantId: (map['tenantId'] as int?) ?? (map['tenant_id'] as int?),
+      createdAt: map['createdAt'] != null
+          ? DateTime.parse(map['createdAt'] as String)
+          : DateTime.now(),
     );
   }
 

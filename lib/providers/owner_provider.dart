@@ -1,14 +1,20 @@
 import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../database/database_helper.dart';
 import '../models/owner.dart';
+import '../services/firestore_service.dart';
 
 class OwnerProvider extends ChangeNotifier {
   final DatabaseHelper _db = DatabaseHelper.instance;
+  final FirestoreService _firestore = FirestoreService.instance;
   List<Owner> _owners = [];
   bool _isLoading = false;
 
   List<Owner> get owners => _owners;
   bool get isLoading => _isLoading;
+
+  Stream<QuerySnapshot> get ownersStream =>
+      _firestore.db.collection('owners').snapshots();
 
   Future<void> loadOwners() async {
     _isLoading = true;
@@ -21,17 +27,48 @@ class OwnerProvider extends ChangeNotifier {
 
   Future<int> addOwner(Owner owner) async {
     final id = await _db.insert('owners', owner.toMap());
+    try {
+      await _firestore.db.collection('owners').add({
+        ...owner.toFirestoreMap(),
+        'oldOwnerId': id,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('Firestore addOwner error: $e');
+    }
     await loadOwners();
     return id;
   }
 
   Future<void> updateOwner(Owner owner) async {
     await _db.update('owners', owner.toMap(), owner.id!);
+    try {
+      final docs = await _firestore.db
+          .collection('owners')
+          .where('oldOwnerId', isEqualTo: owner.id)
+          .get();
+      for (final d in docs.docs) {
+        await d.reference.update(owner.toFirestoreMap());
+      }
+    } catch (e) {
+      debugPrint('Firestore updateOwner error: $e');
+    }
     await loadOwners();
   }
 
   Future<void> deleteOwner(int id) async {
     await _db.delete('owners', id);
+    try {
+      final docs = await _firestore.db
+          .collection('owners')
+          .where('oldOwnerId', isEqualTo: id)
+          .get();
+      for (final d in docs.docs) {
+        await d.reference.delete();
+      }
+    } catch (e) {
+      debugPrint('Firestore deleteOwner error: $e');
+    }
     await loadOwners();
   }
 

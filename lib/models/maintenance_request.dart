@@ -51,6 +51,20 @@ class MaintenanceRequest {
     );
   }
 
+  Map<String, dynamic> toFirestoreMap() {
+    return {
+      'unitId': unitId,
+      'tenantId': tenantId,
+      'issue': title,
+      'description': description,
+      'priority': priority,
+      'status': status,
+      'createdAt': createdAt.toIso8601String(),
+      'resolvedAt': resolvedAt?.toIso8601String(),
+      'oldRequestId': id,
+    };
+  }
+
   MaintenanceRequest copyWith({
     int? id,
     int? unitId,

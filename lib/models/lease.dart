@@ -53,6 +53,21 @@ class Lease {
     );
   }
 
+  Map<String, dynamic> toFirestoreMap() {
+    return {
+      'unitId': unitId,
+      'tenantId': tenantId,
+      'rentAmount': rentAmount,
+      'deposit': securityDeposit,
+      'startDate': startDate.toIso8601String(),
+      'endDate': endDate.toIso8601String(),
+      'isActive': isActive,
+      'notes': notes,
+      'createdAt': createdAt.toIso8601String(),
+      'oldLeaseId': id,
+    };
+  }
+
   Lease copyWith({
     int? id,
     int? unitId,

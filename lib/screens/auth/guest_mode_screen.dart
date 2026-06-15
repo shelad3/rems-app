@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../database/database_helper.dart';
+import '../../services/firestore_service.dart';
 
 class GuestModeScreen extends StatefulWidget {
   const GuestModeScreen({super.key});
@@ -12,7 +12,7 @@ class GuestModeScreen extends StatefulWidget {
 class _GuestModeScreenState extends State<GuestModeScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final db = DatabaseHelper.instance;
+  final _firestore = FirestoreService.instance;
 
   List<Map<String, dynamic>> _vacantProperties = [];
   List<Map<String, dynamic>> _lookingForHelp = [];
@@ -36,66 +36,102 @@ class _GuestModeScreenState extends State<GuestModeScreen>
   Future<void> _loadData() async {
     setState(() => _loading = true);
 
-    final allProperties = await db.queryAll('properties');
-    final allUnits = await db.queryAll('units');
-    final allOwners = await db.queryAll('owners');
+    try {
+      final propsSnap = await _firestore.propertiesRef.get();
+      final unitsSnap = await _firestore.unitsRef.get();
+      final ownersSnap =
+          await _firestore.db.collection('owners').get();
 
-    final ownerMap = {for (final o in allOwners) o['id'] as int: o['name'] as String};
+      final allProperties = propsSnap.docs.map((d) {
+            final map = <String, dynamic>{'id': d.id};
+            final data = d.data() as Map<String, dynamic>?;
+            if (data != null) map.addAll(data);
+            return map;
+          }).toList();
 
-    final propertyOwnerMap = <int, String>{};
-    for (final p in allProperties) {
-      final oid = p['owner_id'] as int?;
-      if (oid != null && ownerMap.containsKey(oid)) {
-        propertyOwnerMap[p['id'] as int] = ownerMap[oid]!;
+      final allUnits = unitsSnap.docs.map((d) {
+            final map = <String, dynamic>{'id': d.id};
+            final data = d.data() as Map<String, dynamic>?;
+            if (data != null) map.addAll(data);
+            return map;
+          }).toList();
+
+      final allOwners = ownersSnap.docs.map((d) {
+            final map = <String, dynamic>{'id': d.id};
+            final data = d.data() as Map<String, dynamic>?;
+            if (data != null) map.addAll(data);
+            return map;
+          }).toList();
+
+      final ownerMap = {
+        for (final o in allOwners) o['id'] as String: o['name'] as String? ?? 'Unknown'
+      };
+
+      final propertyOwnerMap = <String, String>{};
+      for (final p in allProperties) {
+        final oid = p['ownerId'] as String?;
+        if (oid != null && ownerMap.containsKey(oid)) {
+          propertyOwnerMap[p['id'] as String] = ownerMap[oid]!;
+        }
       }
+
+      _vacantProperties = allProperties.where((p) {
+        final propUnits =
+            allUnits.where((u) => u['propertyId'] == p['id']);
+        return propUnits.any((u) => u['status'] == 'vacant');
+      }).map((p) {
+        final pid = p['id'] as String;
+        final vacant = allUnits
+            .where((u) => u['propertyId'] == pid && u['status'] == 'vacant')
+            .toList();
+        return {
+          ...p,
+          'owner_name': propertyOwnerMap[pid] ?? 'Unknown',
+          'vacant_count': vacant.length,
+          'vacant_units': vacant,
+        };
+      }).toList();
+
+      _forSale = allProperties
+          .where((p) => p['status'] == 'for_sale')
+          .map((p) => {
+                ...p,
+                'owner_name':
+                    propertyOwnerMap[p['id'] as String] ?? 'Unknown',
+              })
+          .toList();
+
+      _underConstruction = allProperties
+          .where((p) => p['status'] == 'under_construction')
+          .map((p) => {
+                ...p,
+                'owner_name':
+                    propertyOwnerMap[p['id'] as String] ?? 'Unknown',
+              })
+          .toList();
+
+      _lookingForHelp = allOwners
+          .where((o) =>
+              (o['lookingFor'] as String? ?? '').isNotEmpty ||
+              (o['looking_for'] as String? ?? '').isNotEmpty)
+          .map((o) {
+        final oid = o['id'] as String;
+        final props = allProperties
+            .where((p) => p['ownerId'] == oid)
+            .toList();
+        final lookingFor = o['lookingFor'] as String? ??
+            o['looking_for'] as String? ??
+            '';
+        return {
+          ...o,
+          'looking_for': lookingFor,
+          'property_count': props.length,
+          'properties': props,
+        };
+      }).toList();
+    } catch (e) {
+      debugPrint('Guest mode load error: $e');
     }
-
-    _vacantProperties = allProperties.where((p) {
-      final propUnits = allUnits.where((u) => u['property_id'] == p['id']);
-      return propUnits.any((u) => u['is_occupied'] == 0);
-    }).map((p) {
-      final pid = p['id'] as int;
-      final vacant = allUnits.where((u) => u['property_id'] == pid && u['is_occupied'] == 0).toList();
-      return {
-        ...p,
-        'owner_name': propertyOwnerMap[pid] ?? 'Unknown',
-        'vacant_count': vacant.length,
-        'vacant_units': vacant,
-      };
-    }).toList();
-
-    final status = <String, List<Map<String, dynamic>>>{
-      'for_sale': [],
-      'under_construction': [],
-    };
-
-    for (final p in allProperties) {
-      final s = p['status'] as String? ?? 'rental';
-      final pid = p['id'] as int;
-      final entry = {
-        ...p,
-        'owner_name': propertyOwnerMap[pid] ?? 'Unknown',
-      };
-      if (s == 'for_sale') status['for_sale']!.add(entry);
-      if (s == 'under_construction') status['under_construction']!.add(entry);
-    }
-
-    _forSale = status['for_sale']!;
-    _underConstruction = status['under_construction']!;
-
-    _lookingForHelp = allOwners.where((o) {
-      final lf = o['looking_for'] as String? ?? '';
-      return lf.isNotEmpty;
-    }).map((o) {
-      final oid = o['id'] as int;
-      final props = allProperties.where((p) => p['owner_id'] == oid).toList();
-      return {
-        ...o,
-        'looking_for': o['looking_for'] as String? ?? '',
-        'property_count': props.length,
-        'properties': props,
-      };
-    }).toList();
 
     if (mounted) setState(() => _loading = false);
   }
@@ -152,7 +188,7 @@ class _GuestModeScreenState extends State<GuestModeScreen>
     final units = prop['vacant_units'] as List;
     final lowestRent = units.isEmpty
         ? 0.0
-        : (units.map((u) => (u['rent_amount'] as num?)?.toDouble() ?? 0)
+        : (units.map((u) => (u['rentAmount'] as num?)?.toDouble() ?? 0)
             .reduce((a, b) => a < b ? a : b));
 
     return Card(
@@ -165,7 +201,8 @@ class _GuestModeScreenState extends State<GuestModeScreen>
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.green.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
@@ -186,7 +223,7 @@ class _GuestModeScreenState extends State<GuestModeScreen>
                 style: const TextStyle(
                     fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 4),
-            Text('${prop['city']}, ${prop['state']}',
+            Text(prop['location'] as String? ?? '',
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
             const SizedBox(height: 4),
             Text('Owner: ${prop['owner_name']}',
@@ -195,8 +232,7 @@ class _GuestModeScreenState extends State<GuestModeScreen>
               const SizedBox(height: 4),
               Text('From $fmt$lowestRent /mo',
                   style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: colors.primary)),
+                      fontWeight: FontWeight.w600, color: colors.primary)),
             ],
             const SizedBox(height: 8),
             Wrap(
@@ -205,7 +241,7 @@ class _GuestModeScreenState extends State<GuestModeScreen>
               children: units.map((u) => Chip(
                 visualDensity: VisualDensity.compact,
                 label: Text(
-                  'Unit ${u['unit_number']}',
+                  'Unit ${u['unitNumber']}',
                   style: const TextStyle(fontSize: 10),
                 ),
                 backgroundColor: colors.surfaceVariant,
@@ -234,7 +270,8 @@ class _GuestModeScreenState extends State<GuestModeScreen>
 
   Widget _buildHelpCard(Map<String, dynamic> owner, ColorScheme colors) {
     final lookingFor = owner['looking_for'] as String? ?? '';
-    final labels = lookingFor.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty);
+    final labels =
+        lookingFor.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -249,7 +286,8 @@ class _GuestModeScreenState extends State<GuestModeScreen>
                   backgroundColor: colors.secondary,
                   child: Text(
                     (owner['name'] as String? ?? 'O')[0].toUpperCase(),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -261,7 +299,8 @@ class _GuestModeScreenState extends State<GuestModeScreen>
                           style: const TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 16)),
                       Text('${owner['property_count']} properties',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.grey)),
                     ],
                   ),
                 ),
@@ -280,13 +319,16 @@ class _GuestModeScreenState extends State<GuestModeScreen>
                   size: 16,
                 ),
                 label: Text(
-                  l == 'landlord' ? 'Looking for Landlord' : 'Looking for Caretaker',
+                  l == 'landlord'
+                      ? 'Looking for Landlord'
+                      : 'Looking for Caretaker',
                   style: const TextStyle(fontSize: 11),
                 ),
                 backgroundColor: Colors.amber.withValues(alpha: 0.1),
               )).toList(),
             ),
-            if (owner['email'] != null && (owner['email'] as String).isNotEmpty) ...[
+            if (owner['email'] != null &&
+                (owner['email'] as String).isNotEmpty) ...[
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -312,28 +354,30 @@ class _GuestModeScreenState extends State<GuestModeScreen>
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _forSale.length,
-        itemBuilder: (_, i) => _buildListedCard(_forSale[i], colors, 'For Sale', Colors.blue),
+        itemBuilder: (_, i) =>
+            _buildListedCard(_forSale[i], colors, 'For Sale', Colors.blue),
       ),
     );
   }
 
   Widget _buildConstructionTab(ColorScheme colors) {
     if (_underConstruction.isEmpty) {
-      return _emptyState('No projects under construction', Icons.construction_outlined);
+      return _emptyState(
+          'No projects under construction', Icons.construction_outlined);
     }
     return RefreshIndicator(
       onRefresh: _loadData,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _underConstruction.length,
-        itemBuilder: (_, i) =>
-            _buildListedCard(_underConstruction[i], colors, 'Under Construction', Colors.orange),
+        itemBuilder: (_, i) => _buildListedCard(
+            _underConstruction[i], colors, 'Under Construction', Colors.orange),
       ),
     );
   }
 
-  Widget _buildListedCard(
-      Map<String, dynamic> prop, ColorScheme colors, String label, Color color) {
+  Widget _buildListedCard(Map<String, dynamic> prop, ColorScheme colors,
+      String label, Color color) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -344,7 +388,8 @@ class _GuestModeScreenState extends State<GuestModeScreen>
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
@@ -365,12 +410,13 @@ class _GuestModeScreenState extends State<GuestModeScreen>
                 style: const TextStyle(
                     fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 4),
-            Text('${prop['city']}, ${prop['state']}',
+            Text(prop['location'] as String? ?? '',
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
             const SizedBox(height: 4),
             Text('Owner: ${prop['owner_name']}',
                 style: const TextStyle(fontSize: 12)),
-            if (prop['notes'] != null && (prop['notes'] as String).isNotEmpty) ...[
+            if (prop['notes'] != null &&
+                (prop['notes'] as String).isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(prop['notes'] as String,
                   style: const TextStyle(fontSize: 12),
@@ -390,7 +436,8 @@ class _GuestModeScreenState extends State<GuestModeScreen>
         children: [
           Icon(icon, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
-          Text(message, style: TextStyle(color: Colors.grey[600], fontSize: 16)),
+          Text(message,
+              style: TextStyle(color: Colors.grey[600], fontSize: 16)),
           const SizedBox(height: 24),
           OutlinedButton.icon(
             onPressed: _loadData,

@@ -45,6 +45,19 @@ class Owner {
     );
   }
 
+  Map<String, dynamic> toFirestoreMap() {
+    return {
+      'name': name,
+      'email': email,
+      'phone': phone,
+      'address': address,
+      'notes': notes,
+      'lookingFor': lookingFor,
+      'createdAt': createdAt.toIso8601String(),
+      'oldOwnerId': id,
+    };
+  }
+
   Owner copyWith({
     int? id,
     String? name,

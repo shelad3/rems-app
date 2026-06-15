@@ -49,6 +49,20 @@ class Payment {
     );
   }
 
+  Map<String, dynamic> toFirestoreMap() {
+    return {
+      'leaseId': leaseId,
+      'tenantId': tenantId,
+      'amount': amount,
+      'paymentDate': paymentDate.toIso8601String(),
+      'paymentType': paymentType,
+      'status': status,
+      'notes': notes,
+      'createdAt': createdAt.toIso8601String(),
+      'oldPaymentId': id,
+    };
+  }
+
   Payment copyWith({
     int? id,
     int? leaseId,

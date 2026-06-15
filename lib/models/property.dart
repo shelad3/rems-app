@@ -65,6 +65,20 @@ class Property {
     );
   }
 
+  Map<String, dynamic> toFirestoreMap() {
+    return {
+      'name': name,
+      'location': '$address, $city, $state',
+      'ownerId': ownerId,
+      'landlordId': '',
+      'images': <String>[],
+      'status': status,
+      'type': type,
+      'notes': notes,
+      'oldPropertyId': id,
+    };
+  }
+
   Map<String, dynamic> toJson() => toMap();
 
   Property copyWith({

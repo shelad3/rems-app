@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../database/database_helper.dart';
 import '../models/lease.dart';
+import '../services/firestore_service.dart';
 
 class LeaseProvider extends ChangeNotifier {
   final DatabaseHelper _db = DatabaseHelper.instance;
+  final FirestoreService _firestore = FirestoreService.instance;
   List<Lease> _leases = [];
   List<Map<String, dynamic>> _activeLeases = [];
   bool _isLoading = false;
@@ -11,6 +14,8 @@ class LeaseProvider extends ChangeNotifier {
   List<Lease> get leases => _leases;
   List<Map<String, dynamic>> get activeLeases => _activeLeases;
   bool get isLoading => _isLoading;
+
+  Stream<QuerySnapshot> get leasesStream => _firestore.leasesRef.snapshots();
 
   Future<void> loadLeases() async {
     _isLoading = true;
@@ -24,17 +29,45 @@ class LeaseProvider extends ChangeNotifier {
 
   Future<int> addLease(Lease lease) async {
     final id = await _db.insert('leases', lease.toMap());
+    try {
+      await _firestore.addLease({
+        ...lease.toFirestoreMap(),
+        'oldLeaseId': id,
+      });
+    } catch (e) {
+      debugPrint('Firestore addLease error: $e');
+    }
     await loadLeases();
     return id;
   }
 
   Future<void> updateLease(Lease lease) async {
     await _db.update('leases', lease.toMap(), lease.id!);
+    try {
+      final docs = await _firestore.leasesRef
+          .where('oldLeaseId', isEqualTo: lease.id)
+          .get();
+      for (final d in docs.docs) {
+        await _firestore.updateLease(d.id, lease.toFirestoreMap());
+      }
+    } catch (e) {
+      debugPrint('Firestore updateLease error: $e');
+    }
     await loadLeases();
   }
 
   Future<void> deleteLease(int id) async {
     await _db.delete('leases', id);
+    try {
+      final docs = await _firestore.leasesRef
+          .where('oldLeaseId', isEqualTo: id)
+          .get();
+      for (final d in docs.docs) {
+        await d.reference.delete();
+      }
+    } catch (e) {
+      debugPrint('Firestore deleteLease error: $e');
+    }
     await loadLeases();
   }
 

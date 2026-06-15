@@ -139,8 +139,8 @@ class FirestoreService {
   Stream<QuerySnapshot> activeLeasesStream() =>
       leasesRef.where('isActive', isEqualTo: true).snapshots();
 
-  Stream<DocumentSnapshot> tenantLeaseStream(String tenantId) =>
-      leasesRef.doc(tenantId).snapshots();
+  Stream<QuerySnapshot> tenantLeaseStream(String tenantId) =>
+      leasesRef.where('tenantId', isEqualTo: tenantId).snapshots();
 
   Future<Map<String, dynamic>?> getLeaseByTenant(String tenantId) async {
     final snaps = await leasesRef

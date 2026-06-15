@@ -57,6 +57,23 @@ class Unit {
     );
   }
 
+  Map<String, dynamic> toFirestoreMap() {
+    return {
+      'propertyId': propertyId,
+      'unitNumber': unitNumber,
+      'rentAmount': rentAmount,
+      'caretakerId': '',
+      'status': isOccupied ? 'occupied' : 'vacant',
+      'location': '',
+      'description': notes,
+      'bedrooms': bedrooms,
+      'bathrooms': bathrooms,
+      'squareFeet': squareFeet,
+      'securityDeposit': securityDeposit,
+      'oldUnitId': id,
+    };
+  }
+
   Unit copyWith({
     int? id,
     int? propertyId,

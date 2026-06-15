@@ -22,6 +22,8 @@ import 'services/notification_service.dart';
 import 'services/push_service.dart';
 import 'services/pdf_export_service.dart';
 import 'services/backup_service.dart';
+import 'services/firestore_service.dart';
+import 'services/firestore_sync_extension.dart';
 import 'services/update_service.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/owner_shell.dart';
@@ -48,10 +50,8 @@ import 'screens/landlord/staff_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
+  if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  } catch (_) {
-    // Already initialized by a plugin
   }
   await AuthService.instance.load();
   await NotificationService.instance.init();
@@ -190,14 +190,27 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       AuthService.instance.lock();
       if (mounted) setState(() => _locked = true);
     }
-    if (state == AppLifecycleState.resumed && _locked) {
-      _unlock();
+    if (state == AppLifecycleState.resumed) {
+      if (_locked) {
+        _unlock();
+      } else {
+        _autoSync();
+      }
     }
   }
 
   Future<void> _unlock() async {
     final ok = await AuthService.instance.authenticate();
     if (mounted) setState(() => _locked = !ok);
+  }
+
+  Future<void> _autoSync() async {
+    try {
+      await FirestoreService.instance.syncAllFromSqlite();
+      await FirestoreService.instance.downloadFromFirestore();
+    } catch (e) {
+      debugPrint('Auto sync on resume error: $e');
+    }
   }
 
   @override
@@ -533,6 +546,24 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             ),
             const Divider(),
             const _SectionHeader(title: 'DATA'),
+            ListTile(
+              leading: const Icon(Icons.cloud_sync),
+              title: const Text('Sync from Cloud'),
+              onTap: () async {
+                Navigator.pop(context);
+                final messenger = ScaffoldMessenger.of(context);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Syncing data from cloud...')),
+                );
+                await FirestoreService.instance.downloadFromFirestore();
+                if (context.mounted) {
+                  messenger.showSnackBar(
+                    const SnackBar(
+                        content: Text('Sync complete! Pull to refresh screens.')),
+                  );
+                }
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.backup),
               title: const Text('Backup Database'),

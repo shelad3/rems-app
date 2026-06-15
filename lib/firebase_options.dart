@@ -1,19 +1,13 @@
-// Placeholder - Replace this file by running:
-//   flutterfire configure
-//
-// This will generate the actual firebase_options.dart
-// with your Firebase project configuration.
-
 import 'package:firebase_core/firebase_core.dart';
 
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     return const FirebaseOptions(
-      apiKey: '',
-      appId: '',
-      messagingSenderId: '',
-      projectId: '',
-      storageBucket: '',
+      apiKey: 'AIzaSyAuXNq5pKQAquWlrBK5frJLEzlzUSlAxBE',
+      appId: '1:857595619216:android:f14b5b39a8a8bcd89df515',
+      messagingSenderId: '857595619216',
+      projectId: 'rems-dae41',
+      storageBucket: 'rems-dae41.firebasestorage.app',
     );
   }
 }

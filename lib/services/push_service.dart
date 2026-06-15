@@ -42,4 +42,14 @@ class PushService {
 }
 
 @pragma('vm:entry-point')
-Future<void> _handleBackground(RemoteMessage message) async {}
+Future<void> _handleBackground(RemoteMessage message) async {
+  final title = message.notification?.title ?? message.data['title'] ?? '';
+  final body = message.notification?.body ?? message.data['body'] ?? '';
+  if (title.isNotEmpty && body.isNotEmpty) {
+    NotificationService.instance.showNotification(
+      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title: title,
+      body: body,
+    );
+  }
+}
