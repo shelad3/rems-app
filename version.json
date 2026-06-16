@@ -1,0 +1,6 @@
+{
+  "version": "1.0.0",
+  "buildNumber": 1,
+  "downloadUrl": "https://github.com/shelad3/rems-app/releases/download/v1.0.0/app-release.apk",
+  "changelog": "- Fixed Firestore sync: no more duplicate records\n- Payment buttons now work reliably\n- Added in-app OTA update support\n- Lease list shows correct tenant names\n- Various stability improvements"
+}

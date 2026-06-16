@@ -25,7 +25,9 @@ import 'services/pdf_export_service.dart';
 import 'services/backup_service.dart';
 import 'services/firestore_service.dart';
 import 'services/firestore_sync_extension.dart';
+import 'models/update_info.dart';
 import 'services/update_service.dart';
+import 'screens/update/update_dialog.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/owner_shell.dart';
 import 'screens/auth/tenant_shell.dart';
@@ -63,6 +65,7 @@ void main() async {
   await AuthService.instance.load();
   await NotificationService.instance.init();
   await PushService.instance.init();
+  await UpdateInfo.init();
   runApp(const RealEstateManagementApp());
 }
 
@@ -182,9 +185,16 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) UpdateService.instance.checkOnStartup(context);
-    });
+    _checkForUpdate();
+  }
+
+  Future<void> _checkForUpdate() async {
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+    final info = await UpdateService.instance.checkForUpdate();
+    if (!mounted || info == null) return;
+    if (!context.mounted) return;
+    await UpdateDialog.show(context, info);
   }
 
   @override
@@ -666,9 +676,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             ListTile(
               leading: const Icon(Icons.system_update_outlined),
               title: const Text('Check for Updates'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                UpdateService.instance.checkForUpdates(context);
+                final info = await UpdateService.instance.checkForUpdate();
+                if (!context.mounted) return;
+                if (info != null) {
+                  await UpdateDialog.show(context, info);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('No updates available')),
+                  );
+                }
               },
             ),
             ListTile(
