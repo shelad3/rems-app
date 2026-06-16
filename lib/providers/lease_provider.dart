@@ -11,8 +11,9 @@ class LeaseProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _activeLeases = [];
   bool _isLoading = false;
 
-  List<Lease> get leases => _leases;
-  List<Map<String, dynamic>> get activeLeases => _activeLeases;
+  List<Lease> get leases => List.unmodifiable(_leases);
+  List<Map<String, dynamic>> get activeLeases =>
+      _activeLeases.map((m) => Map<String, dynamic>.from(m)).toList();
   bool get isLoading => _isLoading;
 
   Stream<QuerySnapshot> get leasesStream => _firestore.leasesRef.snapshots();
@@ -81,8 +82,9 @@ class LeaseProvider extends ChangeNotifier {
 
   Lease? getActiveLeaseForUnit(int unitId) {
     try {
-      return _leases.firstWhere(
+      final lease = _leases.firstWhere(
           (l) => l.unitId == unitId && l.isActive);
+      return lease.copyWith();
     } catch (_) {
       return null;
     }

@@ -10,7 +10,7 @@ class TenantProvider extends ChangeNotifier {
   List<Tenant> _tenants = [];
   bool _isLoading = false;
 
-  List<Tenant> get tenants => _tenants;
+  List<Tenant> get tenants => List.unmodifiable(_tenants);
   bool get isLoading => _isLoading;
 
   Stream<QuerySnapshot> get tenantsStream =>
@@ -79,7 +79,8 @@ class TenantProvider extends ChangeNotifier {
 
   Tenant? getTenantById(int id) {
     try {
-      return _tenants.firstWhere((t) => t.id == id);
+      final tenant = _tenants.firstWhere((t) => t.id == id);
+      return tenant.copyWith();
     } catch (_) {
       return null;
     }

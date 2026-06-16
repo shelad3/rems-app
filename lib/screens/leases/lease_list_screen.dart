@@ -19,6 +19,7 @@ class _LeaseListScreenState extends State<LeaseListScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<LeaseProvider>().loadLeases();
+      context.read<TenantProvider>().loadTenants();
     });
   }
 
@@ -78,7 +79,7 @@ class _LeaseListScreenState extends State<LeaseListScreen> {
                           .getTenantById(lease.tenantId);
                       final isExpired =
                           lease.endDate.isBefore(DateTime.now());
-                      final tenantName = tenant?.name ?? 'Unknown';
+                      final tenantName = tenant?.name ?? 'Tenant #${lease.tenantId}';
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),

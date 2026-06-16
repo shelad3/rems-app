@@ -22,6 +22,7 @@ class _PaymentListScreenState extends State<PaymentListScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<PaymentProvider>().loadPayments();
       context.read<LeaseProvider>().loadLeases();
+      context.read<TenantProvider>().loadTenants();
     });
   }
 
@@ -145,10 +146,16 @@ class _PaymentListScreenState extends State<PaymentListScreen> {
                       width: double.infinity,
                       height: 48,
                       child: FilledButton.icon(
-                        onPressed: () {
+                        onPressed: () async {
                           final tenantProvider =
                               context.read<TenantProvider>();
                           final leaseProvider = context.read<LeaseProvider>();
+                          if (tenantProvider.tenants.isEmpty) {
+                            await tenantProvider.loadTenants();
+                          }
+                          if (leaseProvider.leases.isEmpty) {
+                            await leaseProvider.loadLeases();
+                          }
                           final tenant = tenantProvider.tenants
                               .where((t) => t.id == user?.tenantId)
                               .firstOrNull;
@@ -157,6 +164,7 @@ class _PaymentListScreenState extends State<PaymentListScreen> {
                                   l.tenantId == user?.tenantId && l.isActive)
                               .firstOrNull;
                           if (tenant != null && activeLease != null) {
+                            if (!context.mounted) return;
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -168,6 +176,12 @@ class _PaymentListScreenState extends State<PaymentListScreen> {
                                   unitNumber: 'Unit ${activeLease.unitId}',
                                 ),
                               ),
+                            );
+                          } else {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('No active lease found. Contact your landlord.')),
                             );
                           }
                         },
